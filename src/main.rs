@@ -1,10 +1,11 @@
+use chrono::{Local, NaiveDateTime, TimeZone};
 use crossterm::{
     event::{self, Event, KeyCode},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use anyhow::{Context, Result};
-use dialoguer::{theme::ColorfulTheme, Confirm, Select};
+use dialoguer::{theme::ColorfulTheme, Confirm, Input, Select};
 use std::{borrow::Cow, fs::{self, File}, iter::Zip};
 use std::io;
 use std::path::{Path, PathBuf};
@@ -13,6 +14,7 @@ use std::env;
 use zip::{write::FileOptions, ZipWriter};
 use zip::result::ZipError;
 use zip_extensions::{write::ZipWriterExtensions, zip_create_from_directory};
+use regex::Regex;
 
 fn main() -> Result<()> {
     // Enable raw mode for interactive terminal input
@@ -77,11 +79,20 @@ fn backup_directory() {
 
         fs::create_dir_all(&target_dir).expect("Failed to create target directory");
     }
+    // Use dialoguer to prompt for a custom name
+    let custom_name: String = Input::with_theme(&ColorfulTheme::default())
+        .default("Backup".to_string())
+        .with_prompt("Enter a name for the backup")
+        .interact_text()
+        .expect("Failed to read input");
 
+    // Construct the backup name with the custom name and current datetime
     let backup_name = format!(
-        "0000000000000001_{}.zip",
+        "0000000000000001_{}_{}.zip",
+        custom_name,
         chrono::Local::now().format("%Y-%m-%d_%H-%M-%S")
     );
+
     let backup_path = target_dir.join(backup_name);
 
     println!("Backing up directory to: {}", backup_path.display());
@@ -100,18 +111,43 @@ fn restore_directory() {
     let target_dir = get_source_dir();
     let backup_dir = get_target_dir();
 
-    let mut backup_files: Vec<_> = fs::read_dir(&backup_dir)
+    // Define a regex pattern to match the backup file format
+    let re = Regex::new(r"^0000000000000001_(.+)_(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})\.zip$").unwrap();
+
+    let mut backup_files: Vec<(String, String)> = fs::read_dir(&backup_dir)
         .expect("Failed to read backup directory")
         .filter_map(|entry| {
             let entry = entry.ok()?;
             if entry.path().is_file() && entry.path().extension().unwrap_or_default() == "zip" {
-                Some(entry.path().file_name().unwrap().to_string_lossy().to_string())
+                let filename = entry.path().file_name()?.to_string_lossy().to_string();
+                
+                if let Some(captures) = re.captures(&filename) {
+                    // Extract the custom name and datetime
+                    let custom_name = &captures[1];
+                    let date = &captures[2];
+                    let time = &captures[3];
+
+                    // Format the date and time into the desired output
+                    let datetime_str = format!("{} {}", date, time); // Seconds are always "00" as per the regex pattern
+                    let naive_datetime = NaiveDateTime::parse_from_str(&datetime_str, "%Y-%m-%d %H-%M-%S")
+                        .ok()
+                        .map(|dt| Local.from_local_datetime(&dt).unwrap())
+                        .unwrap_or_default();
+                    
+                    let formatted_date_time = naive_datetime.format("%Y-%m-%d %H:%M:%S").to_string();
+                    let display_name = format!("ACNH {} {}", custom_name, formatted_date_time);
+                    
+                    Some((display_name, filename))
+                } else {
+                    Some((filename.clone(), filename))
+                }
             } else {
                 None
             }
         })
         .collect();
-    backup_files.insert(0, "Go back".to_string());
+
+    backup_files.insert(0, ("Go back".to_string(), "Go back".to_string()));
 
     if backup_files.is_empty() {
         println!("No backups found in the backup directory.");
@@ -120,7 +156,7 @@ fn restore_directory() {
 
     let selected_backup = Select::with_theme(&ColorfulTheme::default())
         .with_prompt("Select a backup to restore")
-        .items(&backup_files)
+        .items(&backup_files.iter().map(|pair| pair.0.as_str()).collect::<Vec<&str>>())
         .interact_opt()
         .expect("Failed to get user selection");
 
@@ -129,11 +165,15 @@ fn restore_directory() {
         None => return,
     };
 
-    if &backup_files[selected_backup] == "Go back" {
+    if &backup_files[selected_backup].1 == "Go back" {
         return;
     }
-
-    let backup_path = backup_dir.join(&backup_files[selected_backup]);
+    
+    // Convert the display name back to the original filename
+    let original_filename = &backup_files[selected_backup].1;
+    
+    let backup_path = backup_dir.join(original_filename);
+    
     println!("Restoring directory from: {}", backup_path.display());
     fs::remove_dir_all(&target_dir).expect("Failed to remove target directory");
     fs::create_dir_all(&target_dir).expect("Failed to create target directory");
@@ -159,10 +199,10 @@ fn get_source_dir() -> PathBuf {
 fn get_target_dir() -> PathBuf {
     let username = whoami::username();
     if cfg!(target_os = "windows") {
-        Path::new(&format!(r"C:\Users\{username}\Desktop\Backups")).to_path_buf()
+        Path::new(&format!(r"C:\Users\{username}\AppData\Roaming\Ryujinx\bis\user\save\Backups")).to_path_buf()
     } else {
         let username = env::var("USER").expect("Failed to get user name").to_string();
-        Path::new(&format!(r"/home/{username}/Backups")).to_path_buf()
+        Path::new(&format!(r"/home/{username}/.config/Ryujinx/bis/user/save/Backups")).to_path_buf()
     }
 }
 
