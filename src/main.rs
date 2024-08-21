@@ -114,6 +114,10 @@ fn restore_directory() {
     // Define a regex pattern to match the backup file format
     let re = Regex::new(r"^0000000000000001_(.+)_(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})\.zip$").unwrap();
 
+    if !backup_dir.exists() {
+        println!("Directory: {} does not exist", backup_dir.display());
+        return;
+    }
     let mut backup_files: Vec<(String, String)> = fs::read_dir(&backup_dir)
         .expect("Failed to read backup directory")
         .filter_map(|entry| {
@@ -182,6 +186,7 @@ fn restore_directory() {
 
     // Prompt the user to continue
     Confirm::with_theme(&ColorfulTheme::default())
+        .default(true)
         .with_prompt("Press Enter to continue")
         .interact_opt()
         .expect("Failed to get user input");
