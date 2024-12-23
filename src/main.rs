@@ -194,21 +194,24 @@ fn restore_directory() {
 
 fn get_source_dir() -> PathBuf {
     let username = whoami::username();
-    if cfg!(target_os = "windows") {
-        Path::new(&format!(r"C:\Users\{username}\AppData\Roaming\Ryujinx\bis\user\save\0000000000000001")).to_path_buf()
-    } else {
-        Path::new(&format!(r"/home/{username}/.config/Ryujinx/bis/user/save/0000000000000001")).to_path_buf()
+    match std::env::consts::OS {
+        "windows" => Path::new(&format!(r"C:\Users\{username}\AppData\Roaming\Ryujinx\bis\user\save\0000000000000001")).to_path_buf(),
+        "macos" => Path::new(&format!(r"/Users/{username}/Library/Application Support/Ryujinx/bis/user/save/0000000000000001")).to_path_buf(),
+        _ => Path::new(&format!(r"/home/{username}/.config/Ryujinx/bis/user/save/0000000000000001")).to_path_buf()
     }
 }
 
 fn get_target_dir() -> PathBuf {
     let username = whoami::username();
-    if cfg!(target_os = "windows") {
-        Path::new(&format!(r"C:\Users\{username}\AppData\Roaming\Ryujinx\bis\user\save\Backups")).to_path_buf()
-    } else {
-        let username = env::var("USER").expect("Failed to get user name").to_string();
-        Path::new(&format!(r"/home/{username}/.config/Ryujinx/bis/user/save/Backups")).to_path_buf()
-    }
+    let os = match std::env::consts::OS {
+        "windows" => Path::new(&format!(r"C:\Users\{username}\AppData\Roaming\Ryujinx\bis\user\save\Backups")).to_path_buf(),
+        "macos" => Path::new(&format!(r"/Users/{username}/Library/Application Support/Ryujinx/bis/user/save/Backups")).to_path_buf(),
+        _ => {
+            let username = env::var("USER").expect("Failed to get user name").to_string();
+            Path::new(&format!(r"/home/{username}/.config/Ryujinx/bis/user/save/Backups")).to_path_buf()
+        },
+    };
+    os
 }
 
 fn create_zip_backup(source_dir: &Path, backup_path: &Path) -> Result<()>{
