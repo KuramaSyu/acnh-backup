@@ -18,10 +18,10 @@ use regex::Regex;
 
 fn main() -> Result<()> {
     // Enable raw mode for interactive terminal input
-    enable_raw_mode().expect("Failed to enable raw mode");
+    //enable_raw_mode().expect("Failed to enable raw mode");
 
     // Enter the alternate screen
-    execute!(std::io::stdout(), EnterAlternateScreen).expect("Failed to enter alternate screen");
+    // execute!(std::io::stdout(), EnterAlternateScreen).expect("Failed to enter alternate screen");
 
     loop {
         // Check if a key event occurred
